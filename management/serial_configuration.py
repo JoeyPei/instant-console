@@ -6,7 +6,7 @@
 import os
 import syslog
 import subprocess
-from management.config_profile import LOG_PATH
+from management.config import LOG_PATH
 
 
 class SerialConfiguration:
@@ -22,15 +22,22 @@ class SerialConfiguration:
         p = subprocess.Popen(['ls', '/dev'], stdout=subprocess.PIPE)
         q = subprocess.Popen(['grep', 'USB'], stdin=p.stdout, stdout=subprocess.PIPE)
         devices = q.stdout.read().decode().strip().split('\n')
+
+        if not devices:
+             return kernels
+
         devices.sort(key=lambda x: int(x.strip("ttyUSB")))
+
         if not devices[0]:
             return kernels
+
         for i, dev in enumerate(devices):
             p = subprocess.Popen(['udevadm', 'info', '-a', '--name=/dev/{}'.format(dev)], stdout=subprocess.PIPE)
             q = subprocess.Popen(['grep', 'KERNELS'], stdin=p.stdout, stdout=subprocess.PIPE)
             k = q.stdout.read().decode().split('\n')[2].strip().split(',')[0].split('=')[-1]
             # kernels.add((dev, k))
             kernels.add(k)
+
         return kernels
 
     def get_status(self):

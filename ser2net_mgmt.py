@@ -9,5 +9,5 @@ from management.manage import main
 
 if __name__ == "__main__":
     syslog.openlog("ser2net_mgmt", syslog.LOG_PID)
-    MYSERIALCONFIG.initialize()
+#    MYSERIALCONFIG.initialize()
     main()

@@ -11,7 +11,7 @@ import uvloop
 from sanic import Sanic
 from sanic import response
 from management.serial_configuration import MYSERIALCONFIG
-from management.profile import KEEP_DAYS, LOG_PATH
+from management.config import KEEP_DAYS, LOG_PATH
 
 app = Sanic(__name__)
 app.config.KEEP_ALIVE = False
