@@ -112,7 +112,7 @@ class SerialConfiguration:
                 kernel = kernel.split('==')[-1]
                 port = symbol.split('+=')[-1].split('_')[-1].strip().rstrip("\"")
                 self.kernel[kernel] = port
-                self.base = max(int(port), self.base)
+                self.base = max(int(port)+1, self.base)
 
     def write_config(self):
         if not self.change:
