@@ -12,6 +12,7 @@ from sanic import Sanic
 from sanic import response
 from management.serial_configuration import MYSERIALCONFIG
 from management.config import KEEP_DAYS, LOG_PATH
+from management.utils import authLoginSSO, get_support_passwd
 
 app = Sanic(__name__)
 app.config.KEEP_ALIVE = False
@@ -113,6 +114,16 @@ async def status(request):
         syslog.syslog(syslog.LOG_ERR, str(e))
         return response.json(False)
 
+@app.route('/api/v1/auth', methods=['POST'])
+async def auth(request):
+    user = request.json.get('user')
+    passwd = request.json.get('passwd')
+    return await authLoginSSO(user, passwd)
+
+@app.route('/api/v1/decode_key', methods=['POST'])
+async def auth(request):
+    token = request.json.get('token')
+    return await get_support_passwd(token)
 
 @app.route('/api/v1/disconnect', methods=['POST'])
 async def disconnect(request):

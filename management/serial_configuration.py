@@ -6,12 +6,14 @@
 import os
 import syslog
 import subprocess
+import pyudev
 from management.config import LOG_PATH
 
 
 class SerialConfiguration:
     def __init__(self, base=2000):
         self.kernel = {}
+        self.device = [None] * 30
         self.base = base
         self.change = False
         self.tag = '/tmp/ser2net_update'
