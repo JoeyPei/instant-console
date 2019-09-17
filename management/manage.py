@@ -3,7 +3,7 @@
 @Time:5/16/2019 12:58 PM 
 '''
 import os
-import syslog
+# import syslog
 import asyncio
 import telnetlib
 from datetime import datetime
@@ -61,9 +61,9 @@ async def rotate(path):
                         remove.append(file)
                 except Exception as e:
                     syslog.syslog(syslog.LOG_ERR, str(e))
-        syslog.syslog(syslog.LOG_INFO, 'Aged log' + str(remove))
+        print('Aged log' + str(remove))
         for f in remove:
-            syslog.syslog(syslog.LOG_INFO, 'remove log {}'.format(path))
+            print('remove log {}'.format(path))
             os.remove(os.path.join(path, f))
         await asyncio.sleep(3600)
 
@@ -80,7 +80,7 @@ async def status(request):
 @app.route('/api/v1/device/status', methods=['GET'])
 async def status(request):
     try:
-        syslog.syslog(syslog.LOG_INFO, '{} try to get status'.format(request.ip))
+        print('{} try to get status'.format(request.ip))
         conn = telnetlib.Telnet()
         conn.open('127.0.0.1', MANAGE_PORT)
         conn.read_some()
@@ -89,7 +89,6 @@ async def status(request):
         conn.close()
         buf = buf.split('\r\n')[2:-1]
         ret = []
-        mapping = MYSERIALCONFIG.get_map()
 
         for i in range(len(buf)):
             line = buf[i].split()
@@ -104,14 +103,13 @@ async def status(request):
                 'device': line[4],
                 'in': line[5],
                 'out': line[6],
-                'status': mapping[device]
             }
             # print(info)
             ret.append(info)
         return response.json(ret)
 
     except Exception as e:
-        syslog.syslog(syslog.LOG_ERR, str(e))
+        print(str(e))
         return response.json(False)
 
 @app.route('/api/v1/auth', methods=['POST'])
@@ -136,7 +134,7 @@ async def disconnect(request):
         conn.write('disconnect {}\r\n'.format(port).encode())
         conn.close()
     except Exception as e:
-        syslog.syslog(syslog.LOG_ERR, str(e))
+        print(str(e))
         return response.json(
             False,
             status=501
@@ -149,7 +147,7 @@ async def action(request):
     try:
         opmode = request.json.get('opmode')
 
-        syslog.syslog(syslog.LOG_INFO, "{} request to execute action {}".format(request.ip, opmode))
+        print("{} request to execute action {}".format(request.ip, opmode))
         ret = False
         if not opmode:
             ret = False
@@ -165,7 +163,7 @@ async def action(request):
         elif opmode == 'generate':
             ret = MYSERIALCONFIG.write_config()
     except Exception as e:
-        syslog.syslog(syslog.LOG_ERR, str(e))
+        print(str(e))
         return response.json(
             False,
             status=501
@@ -175,15 +173,15 @@ async def action(request):
 
 @app.route('/api/v1/index', methods=['GET'])
 async def index(request):
-    syslog.syslog(syslog.LOG_INFO, "{} request to get index".format(request.ip))
+    print("{} request to get index".format(request.ip))
     return response.json(
         {'file': os.listdir(LOG_PATH)}
     )
 
 
 def main():
-    app.add_task(rotate(LOG_PATH))
-    app.run(host="0.0.0.0", port=80, debug=False, access_log=True)
+    #app.add_task(rotate(LOG_PATH))
+    app.run(host="0.0.0.0", port=80, debug=False)
 
 if __name__ == "__main__":
     syslog.openlog("ser2net_mgmt", syslog.LOG_PID)

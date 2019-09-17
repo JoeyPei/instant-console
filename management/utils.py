@@ -5,8 +5,8 @@ import aiohttp
 import re
 import json
 
-from secret import decodeURL, orginalAuthUrl, decodeURLReferer
-from config import COOKIES
+from management.secret import decodeURL, orginalAuthUrl, decodeURLReferer
+from management.config import COOKIES
 
 try:
     f = open('./cookies', 'r')
