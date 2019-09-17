@@ -10,10 +10,7 @@ from threading import Lock
 
 import pyudev
 
-from management.config import LOG_PATH
-
-BASE = 2000
-MAX_SUPPORT_PORT = 30
+from management.config import LOG_PATH, MANAGE_PORT, BASE, MAX_SUPPORT_PORT
 
 
 class SerialConfiguration:
@@ -159,10 +156,6 @@ class SerialConfiguration:
 
         self.generate_conf()
 
-        if not os.path.isfile('/etc/ser2net.conf'):
-            print('copy ser2net.conf')
-            os.system('cp management/ser2net.conf /etc/ser2net.conf')
-
         self.load()
         monitor = pyudev.Monitor.from_netlink(self.context)
         monitor.filter_by('usb-serial')
@@ -177,11 +170,15 @@ class SerialConfiguration:
         port_template = '{num}:telnet:0:/dev/serial_{num}:9600 8DATABITS NONE 1STOPBIT {flag} \r\n'
         with open('ser2net.conf', 'w') as _conf:
             _conf.write('TRACEFILE:log:/tmp/ser2net/port_\p-\Y\m\D.log\r\n')
-            _conf.write('CONTROLPORT:localhost,4321\r\n\r\n')
+            _conf.write('CONTROLPORT:localhost,{}\r\n\r\n'.format(MANAGE_PORT))
             _conf.writelines([
                 port_template.format(num=num, flag=' tr=log rotate')
                 for num in range(BASE, BASE + MAX_SUPPORT_PORT)
             ])
+
+        if not os.path.isfile('/etc/ser2net.conf'):
+            print('copy ser2net.conf')
+            os.system('cp ser2net.conf /etc/ser2net.conf')
 
 
 MYSERIALCONFIG = SerialConfiguration()

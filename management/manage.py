@@ -11,7 +11,7 @@ import uvloop
 from sanic import Sanic
 from sanic import response
 from management.serial_configuration import MYSERIALCONFIG
-from management.config import KEEP_DAYS, LOG_PATH
+from management.config import KEEP_DAYS, LOG_PATH, MANAGE_PORT
 from management.utils import authLoginSSO, get_support_passwd
 
 app = Sanic(__name__)
@@ -23,7 +23,6 @@ app.static('/favicon.ico', './favicon.ico')
 app.static('/static', './static')
 app.static('/log', './log')
 
-MANAGE_PORT = 4321
 
 
 class DiscoveryProtocol:
@@ -158,10 +157,15 @@ async def action(request):
         elif opmode == 'reboot':
             os.system('reboot')
             ret = True
-        elif opmode == 'detect':
+        elif opmode == 'update':
             ret = MYSERIALCONFIG.update()
+        elif opmode == 'reset':
+            ret = MYSERIALCONFIG.reset()
+        elif opmode == 'prune':
+            ret = MYSERIALCONFIG.prune()
         elif opmode == 'generate':
             ret = MYSERIALCONFIG.write_config()
+
     except Exception as e:
         print(str(e))
         return response.json(
