@@ -6,7 +6,10 @@
 import os
 import json
 import subprocess
+from threading import Lock
+
 import pyudev
+
 from management.config import LOG_PATH
 
 BASE = 2000
@@ -20,6 +23,7 @@ class SerialConfiguration:
         self.tag = '/tmp/ser2net_update'
         self.observer = None
         self.context = pyudev.Context()
+        self.lock = Lock()
 
     def get_devices(self):
         devices = [d.sys_path for d in self.context.list_devices(subsystem='usb-serial')]
@@ -36,9 +40,11 @@ class SerialConfiguration:
             # If not found, insert to self.device
             if not self.config.get(path):
                 try:
+                    self.lock.acquire()
                     idx = self.device.index(None)
                     print("Insert new device [{}]: {} ".format(idx, path))
                     self.device[idx] = path
+                    self.lock.release()
                 except ValueError:
                     print("device has reached maximum number")
                     return False
@@ -50,6 +56,7 @@ class SerialConfiguration:
 
     def sync(self):
         print("sync config")
+        self.lock.acquire()
         for idx, path in enumerate(self.device):
             port = str(BASE + idx)
             link = '/dev/serial_' + port
@@ -72,6 +79,7 @@ class SerialConfiguration:
                     os.symlink(self.config[path], link)
 
         self.save()
+        self.lock.release()
 
     def reset(self):
         self.config = {}
@@ -87,9 +95,11 @@ class SerialConfiguration:
                 valid_devices.index(item)
             except ValueError:
                 print("Delete device [{}] :{}".format(idx, item))
+                self.lock.acquire()
                 self.device[idx] = None
                 if self.config.get(item):
                     del self.config[item]
+                self.lock.release()
 
         self.sync()
 
@@ -127,12 +137,13 @@ class SerialConfiguration:
 
         if action == "remove":
             path, dev = self.get_pair(device.sys_path)
-            idx = self.device.index(path)
-            port = str(BASE + idx)
-            link = '/dev/serial_' + port
-            print("auto-update: Delete symbol link: {}".format(link))
-            if os.path.lexists(link):
-                os.remove(link)
+            if self.config.get(path):
+                idx = self.device.index(path)
+                port = str(BASE + idx)
+                link = '/dev/serial_' + port
+                print("auto-update: Delete symbol link: {}".format(link))
+                if os.path.lexists(link):
+                    os.remove(link)
 
     def initialize(self):
         if not os.path.exists(LOG_PATH):
@@ -150,9 +161,7 @@ class SerialConfiguration:
 
         if not os.path.isfile('/etc/ser2net.conf'):
             print('copy ser2net.conf')
-            # os.system('cp management/ser2net.conf /etc/ser2net.conf')
-            # os.system('cp management/ser2net /etc/init.d/ser2net')
-            # os.system('update-rc.d ser2net')
+            os.system('cp management/ser2net.conf /etc/ser2net.conf')
 
         self.load()
         monitor = pyudev.Monitor.from_netlink(self.context)
@@ -160,6 +169,9 @@ class SerialConfiguration:
         self.observer = pyudev.MonitorObserver(monitor, self.auto_update)
         self.observer.start()
         print('initialize observer')
+
+        # os.system('cp management/ser2net /etc/init.d/ser2net')
+        # os.system('update-rc.d ser2net')
 
     def generate_conf(self):
         port_template = '{num}:telnet:0:/dev/serial_{num}:9600 8DATABITS NONE 1STOPBIT {flag} \r\n'
