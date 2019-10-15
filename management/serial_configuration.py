@@ -10,7 +10,8 @@ from threading import Lock
 
 import pyudev
 
-from management.config import LOG_PATH, MANAGE_PORT, BASE, MAX_SUPPORT_PORT
+from management.utils import generate_name
+from management.config import LOG_PATH, MANAGE_PORT, PORT_BASE, MAX_SUPPORT_PORT
 
 
 class SerialConfiguration:
@@ -20,11 +21,26 @@ class SerialConfiguration:
         self.tag = '/tmp/ser2net_update'
         self.observer = None
         self.context = pyudev.Context()
-        self.lock = Lock()
 
     def get_devices(self):
         devices = [d.sys_path for d in self.context.list_devices(subsystem='usb-serial')]
         return devices
+
+    def get_status(self):
+        info = {
+            'map': self.config,
+            'index': self.device,
+            'identifier': '',
+        }
+
+        return info
+
+    def set_config(self, info):
+        self.config = info.get('map')
+        self.device = info.get('index')
+        identifier = info.get('identifier')
+
+        return True
 
     def get_pair(self, path):
         _ = path.split("/")
@@ -37,15 +53,13 @@ class SerialConfiguration:
             # If not found, insert to self.device
             if not self.config.get(path):
                 try:
-                    self.lock.acquire()
                     idx = self.device.index(None)
-                    print("Insert new device [{}]: {} ".format(idx, path))
-                    self.device[idx] = path
-                    self.lock.release()
+                    if idx:
+                        print("Insert new device [{}]: {} ".format(idx, path))
+                        self.device[idx] = path
                 except ValueError:
                     print("device has reached maximum number")
                     return False
-
             # Update or Insert new item
             self.config[path] = dev
 
@@ -53,9 +67,8 @@ class SerialConfiguration:
 
     def sync(self):
         print("sync config")
-        self.lock.acquire()
         for idx, path in enumerate(self.device):
-            port = str(BASE + idx)
+            port = str(PORT_BASE + idx)
             link = '/dev/serial_' + port
 
             if os.path.lexists(link):
@@ -76,13 +89,13 @@ class SerialConfiguration:
                     os.symlink(self.config[path], link)
 
         self.save()
-        self.lock.release()
 
     def reset(self):
         self.config = {}
         self.device = [None] * MAX_SUPPORT_PORT
         self.update()
         print("Reset. Total Devices: {}".format(len(self.config)))
+        return True
 
     def prune(self):
         print("Delete invalid node")
@@ -92,13 +105,12 @@ class SerialConfiguration:
                 valid_devices.index(item)
             except ValueError:
                 print("Delete device [{}] :{}".format(idx, item))
-                self.lock.acquire()
                 self.device[idx] = None
                 if self.config.get(item):
                     del self.config[item]
-                self.lock.release()
 
         self.sync()
+        return True
 
     def save(self):
         config = {
@@ -125,6 +137,7 @@ class SerialConfiguration:
         print("update")
         self.update_map(self.get_devices())
         self.sync()
+        return True
 
     def auto_update(self, action, device):
         if action == "add":
@@ -136,7 +149,7 @@ class SerialConfiguration:
             path, dev = self.get_pair(device.sys_path)
             if self.config.get(path):
                 idx = self.device.index(path)
-                port = str(BASE + idx)
+                port = str(PORT_BASE + idx)
                 link = '/dev/serial_' + port
                 print("auto-update: Delete symbol link: {}".format(link))
                 if os.path.lexists(link):
@@ -173,7 +186,7 @@ class SerialConfiguration:
             _conf.write('CONTROLPORT:localhost,{}\r\n\r\n'.format(MANAGE_PORT))
             _conf.writelines([
                 port_template.format(num=num, flag=' tr=log rotate')
-                for num in range(BASE, BASE + MAX_SUPPORT_PORT)
+                for num in range(PORT_BASE, PORT_BASE + MAX_SUPPORT_PORT)
             ])
 
         if not os.path.isfile('/etc/ser2net.conf'):

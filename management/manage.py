@@ -3,7 +3,6 @@
 @Time:5/16/2019 12:58 PM 
 '''
 import os
-# import syslog
 import asyncio
 import telnetlib
 from datetime import datetime
@@ -11,8 +10,7 @@ import uvloop
 from sanic import Sanic
 from sanic import response
 from management.serial_configuration import MYSERIALCONFIG
-from management.config import KEEP_DAYS, LOG_PATH, MANAGE_PORT
-from management.utils import authLoginSSO, get_support_passwd
+from management.config import KEEP_DAYS, LOG_PATH, MANAGE_PORT, REMOTE_SERVER
 
 app = Sanic(__name__)
 app.config.KEEP_ALIVE = False
@@ -24,27 +22,6 @@ app.static('/static', './static')
 app.static('/log', './log')
 
 
-
-class DiscoveryProtocol:
-    def __init__(self):
-        self.transport = None
-
-    def connection_made(self, transport):
-        self.transport = transport
-
-    def datagram_received(self, data, addr):
-        print("Received:", data.decode())
-
-        print("Close the socket")
-        self.transport.close()
-
-    def error_received(self, exc):
-        print('Error received:', exc)
-
-    def connection_lost(self, exc):
-        print("Socket closed, stop the event loop")
-
-
 async def rotate(path):
     while True:
         ret = os.listdir(path)
@@ -53,13 +30,13 @@ async def rotate(path):
         for file in ret:
             if file.startswith('port'):
                 try:
-                    raw = file.split('-')[-1].split('.')[0]
+                    raw = file.split('-')[-1].split(b".")[0]
                     date = datetime.strptime(raw, '%Y%m%d')
                     period = now - date
                     if period.days > KEEP_DAYS:
                         remove.append(file)
                 except Exception as e:
-                    syslog.syslog(syslog.LOG_ERR, str(e))
+                    print(str(e))
         print('Aged log' + str(remove))
         for f in remove:
             print('remove log {}'.format(path))
@@ -111,35 +88,33 @@ async def status(request):
         print(str(e))
         return response.json(False)
 
-@app.route('/api/v1/auth', methods=['POST'])
-async def auth(request):
-    user = request.json.get('user')
-    passwd = request.json.get('passwd')
-    return await authLoginSSO(user, passwd)
-
-@app.route('/api/v1/decode_key', methods=['POST'])
-async def auth(request):
-    token = request.json.get('token')
-    return await get_support_passwd(token)
-
-@app.route('/api/v1/disconnect', methods=['POST'])
-async def disconnect(request):
+@app.route('/api/v1/config')
+async def config(request):
     try:
-        port = request.json.get('port')
-        syslog.syslog(syslog.LOG_INFO, "{} request to disconnect {}".format(request.ip, port))
-        conn = telnetlib.Telnet()
-        conn.open('127.0.0.1', MANAGE_PORT)
-        conn.read_some()
-        conn.write('disconnect {}\r\n'.format(port).encode())
-        conn.close()
+        print("{} request to {} config".format(request.ip, request.method.lower()))
+        if request.method == 'GET':
+            with open('config.py', 'r') as _c:
+                raw = _c.readlines()
+                ret = {}
+                for line in raw:
+                    p, q = line.split('=')
+                    ret[p.strip().lower()] = q.strip()
+                return response.json(ret)
+
+        elif request.method == 'POST':
+            tmp = []
+            for k,v in request.json.items():
+                tmp.append(k.upper() + ' = ' + v)
+            with open('config.py', 'w') as _c:
+                _c.writelines(tmp)
+            return True
+        
     except Exception as e:
         print(str(e))
         return response.json(
             False,
             status=501
         )
-    return response.json(True)
-
 
 @app.route('/api/v1/action', methods=['POST'])
 async def action(request):
@@ -150,13 +125,27 @@ async def action(request):
         ret = False
         if not opmode:
             ret = False
+        elif opmode == 'disconnect':
+            try:
+                port = request.json.get('port')
+                syslog.syslog(syslog.LOG_INFO, "{} request to disconnect {}".format(request.ip, port))
+                conn = telnetlib.Telnet()
+                conn.open('127.0.0.1', MANAGE_PORT)
+                conn.read_some()
+                conn.write('disconnect {}\r\n'.format(port).encode())
+                conn.close()
+            except Exception as e:
+                print(str(e))
+                return response.json(
+                    False,
+                    status=501
+                )
         elif opmode == 'restart':
             os.system('service ser2net stop')
             os.system('service ser2net start')
             ret = True
         elif opmode == 'reboot':
             os.system('reboot')
-            ret = True
         elif opmode == 'update':
             ret = MYSERIALCONFIG.update()
         elif opmode == 'reset':
@@ -174,6 +163,9 @@ async def action(request):
         )
     return response.json(ret)
 
+@app.route('/api/v1/log', methods=['GET'])
+async def system_log(request):
+    return response.json(ret)
 
 @app.route('/api/v1/index', methods=['GET'])
 async def index(request):
@@ -182,10 +174,17 @@ async def index(request):
         {'file': os.listdir(LOG_PATH)}
     )
 
+async def report():
+    url = 'http://{}:{}/console'.format(*REMOTE_SERVER)
+    async with aiohttp.ClientSession() as session:
+        while True:
+            await session.post(url, json=MYSERIALCONFIG.get_status())
+            await asyncio.sleep(300)
+
 
 def main():
     #app.add_task(rotate(LOG_PATH))
-    app.run(host="0.0.0.0", port=80, debug=False)
+    app.run(host="0.0.0.0", port=8080, debug=False)
 
 if __name__ == "__main__":
     syslog.openlog("ser2net_mgmt", syslog.LOG_PID)

@@ -4,7 +4,6 @@
 '''
 # import syslog
 from management.serial_configuration import MYSERIALCONFIG
-from management.config import COOKIES
 from management.manage import main
 
 
