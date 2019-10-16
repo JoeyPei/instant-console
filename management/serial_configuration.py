@@ -9,6 +9,9 @@ import subprocess
 from threading import Lock
 
 import pyudev
+import logging
+
+logging.basicConfig(filename='ser2net_mgmt.log', filemode='w', level = logging.INFO,format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 from management.utils import generate_name
 from management.config import LOG_PATH, MANAGE_PORT, PORT_BASE, MAX_SUPPORT_PORT
@@ -55,10 +58,10 @@ class SerialConfiguration:
                 try:
                     idx = self.device.index(None)
                     if idx:
-                        print("Insert new device [{}]: {} ".format(idx, path))
+                        logger.info("Insert new device [{}]: {} ".format(idx, path))
                         self.device[idx] = path
                 except ValueError:
-                    print("device has reached maximum number")
+                    logger.info("device has reached maximum number")
                     return False
             # Update or Insert new item
             self.config[path] = dev
@@ -66,7 +69,7 @@ class SerialConfiguration:
         return True
 
     def sync(self):
-        print("sync config")
+        logger.info("sync config")
         for idx, path in enumerate(self.device):
             port = str(PORT_BASE + idx)
             link = '/dev/serial_' + port
@@ -76,16 +79,16 @@ class SerialConfiguration:
                     if os.readlink(link) == self.config.get(path):
                         continue
                     else:
-                        print("Delete symbol link: {}".format(link))
+                        logger.info("Delete symbol link: {}".format(link))
                         os.remove(link)
-                        print("Create symbol link: {} -> {}".format(self.config[path], link))
+                        logger.info("Create symbol link: {} -> {}".format(self.config[path], link))
                         os.symlink(self.config[path], link)
                 else:
-                    print("Delete invalid link: {}".format(link))
+                    logger.info("Delete invalid link: {}".format(link))
                     os.remove(link)
             else:
                 if path:
-                    print("Create symbol link: {} -> {}".format(self.config[path], link))
+                    logger.info("Create symbol link: {} -> {}".format(self.config[path], link))
                     os.symlink(self.config[path], link)
 
         self.save()
@@ -94,17 +97,17 @@ class SerialConfiguration:
         self.config = {}
         self.device = [None] * MAX_SUPPORT_PORT
         self.update()
-        print("Reset. Total Devices: {}".format(len(self.config)))
+        logger.info("Reset. Total Devices: {}".format(len(self.config)))
         return True
 
     def prune(self):
-        print("Delete invalid node")
+        logger.info("Delete invalid node")
         valid_devices = [self.get_pair(d)[0] for d in self.get_devices()]
         for idx, item in enumerate(self.device):
             try:
                 valid_devices.index(item)
             except ValueError:
-                print("Delete device [{}] :{}".format(idx, item))
+                logger.info("Delete device [{}] :{}".format(idx, item))
                 self.device[idx] = None
                 if self.config.get(item):
                     del self.config[item]
@@ -120,10 +123,10 @@ class SerialConfiguration:
 
         with open('serial.map', 'w') as _map:
             _map.write(json.dumps(config))
-        print("save serial.map")
+        logger.info("save serial.map")
 
     def load(self):
-        print("load serial.map")
+        logger.info("load serial.map")
         try:
             with open('serial.map', 'r') as _map:
                 raw = _map.read()
@@ -131,17 +134,17 @@ class SerialConfiguration:
                 self.config = config['map'] or {}
                 self.device = config['index'] or {}
         except:
-            print("Failed to load serial.map")
+            logger.info("Failed to load serial.map")
 
     def update(self):
-        print("update")
+        logger.info("update")
         self.update_map(self.get_devices())
         self.sync()
         return True
 
     def auto_update(self, action, device):
         if action == "add":
-            print('auto-update: {}  Device:{}'.format(action, device.sys_name))
+            logger.info('auto-update: {}  Device:{}'.format(action, device.sys_name))
             self.update_map([device.sys_path])
             self.sync()
 
@@ -151,20 +154,20 @@ class SerialConfiguration:
                 idx = self.device.index(path)
                 port = str(PORT_BASE + idx)
                 link = '/dev/serial_' + port
-                print("auto-update: Delete symbol link: {}".format(link))
+                logger.info("auto-update: Delete symbol link: {}".format(link))
                 if os.path.lexists(link):
                     os.remove(link)
 
     def initialize(self):
         if not os.path.exists(LOG_PATH):
-            print('create {}'.format(LOG_PATH))
+            logger.info('create {}'.format(LOG_PATH))
             os.makedirs(LOG_PATH)
 
         if os.path.isfile(self.tag):
             os.remove(self.tag)
 
         if not os.path.exists('log'):
-            print('symbol link to {}'.format(LOG_PATH))
+            logger.info('symbol link to {}'.format(LOG_PATH))
             os.system('ln -s /tmp/ser2net ./log')
 
         self.generate_conf()
@@ -174,7 +177,7 @@ class SerialConfiguration:
         monitor.filter_by('usb-serial')
         self.observer = pyudev.MonitorObserver(monitor, self.auto_update)
         self.observer.start()
-        print('initialize observer')
+        logger.info('initialize observer')
 
         # os.system('cp management/ser2net /etc/init.d/ser2net')
         # os.system('update-rc.d ser2net')
@@ -190,8 +193,9 @@ class SerialConfiguration:
             ])
 
         if not os.path.isfile('/etc/ser2net.conf'):
-            print('copy ser2net.conf')
+            logger.info('copy ser2net.conf')
             os.system('cp ser2net.conf /etc/ser2net.conf')
 
 
 MYSERIALCONFIG = SerialConfiguration()
+logger = logging.getLogger('ser2net_mgmt')

@@ -9,7 +9,8 @@ from datetime import datetime
 import uvloop
 from sanic import Sanic
 from sanic import response
-from management.serial_configuration import MYSERIALCONFIG
+
+from management.serial_configuration import MYSERIALCONFIG, logger
 from management.config import KEEP_DAYS, LOG_PATH, MANAGE_PORT, REMOTE_SERVER
 
 app = Sanic(__name__)
@@ -36,10 +37,10 @@ async def rotate(path):
                     if period.days > KEEP_DAYS:
                         remove.append(file)
                 except Exception as e:
-                    print(str(e))
-        print('Aged log' + str(remove))
+                    logger.info(str(e))
+        logger.info('Aged log' + str(remove))
         for f in remove:
-            print('remove log {}'.format(path))
+            logger.info('remove log {}'.format(path))
             os.remove(os.path.join(path, f))
         await asyncio.sleep(3600)
 
@@ -56,7 +57,7 @@ async def status(request):
 @app.route('/api/v1/device/status', methods=['GET'])
 async def status(request):
     try:
-        print('{} try to get status'.format(request.ip))
+        logger.info('{} try to get status'.format(request.ip))
         conn = telnetlib.Telnet()
         conn.open('127.0.0.1', MANAGE_PORT)
         conn.read_some()
@@ -80,25 +81,43 @@ async def status(request):
                 'in': line[5],
                 'out': line[6],
             }
-            # print(info)
+
             ret.append(info)
         return response.json(ret)
 
     except Exception as e:
-        print(str(e))
+        logger.info(str(e))
         return response.json(False)
+
+@app.route('/api/v1/map', methods=['GET'])
+async def map(request):
+    try:
+        if request.method == 'GET':
+            return response.json(MYSERIALCONFIG.config)
+        elif request.method == 'POST':
+            MYSERIALCONFIG.config = response.json
+            MYSERIALCONFIG.sync()
+            return response.json(True)
+    except Exception as e:
+        logger.info(str(e))
+        return response.json(
+            False,
+            status=501
+        )
 
 @app.route('/api/v1/config')
 async def config(request):
     try:
-        print("{} request to {} config".format(request.ip, request.method.lower()))
+        logger.info("{} request to {} config".format(request.ip, request.method.lower()))
         if request.method == 'GET':
-            with open('config.py', 'r') as _c:
+            with open('management/config.py', 'r') as _c:
                 raw = _c.readlines()
                 ret = {}
                 for line in raw:
-                    p, q = line.split('=')
-                    ret[p.strip().lower()] = q.strip()
+                    o = line.split('=')
+                    if len(o) == 2:
+                        p, q = o
+                        ret[p.strip().lower()] = q.rstrip('\n').strip()
                 return response.json(ret)
 
         elif request.method == 'POST':
@@ -110,7 +129,7 @@ async def config(request):
             return True
         
     except Exception as e:
-        print(str(e))
+        logger.info(str(e))
         return response.json(
             False,
             status=501
@@ -121,7 +140,7 @@ async def action(request):
     try:
         opmode = request.json.get('opmode')
 
-        print("{} request to execute action {}".format(request.ip, opmode))
+        logger.info("{} request to execute action {}".format(request.ip, opmode))
         ret = False
         if not opmode:
             ret = False
@@ -135,7 +154,7 @@ async def action(request):
                 conn.write('disconnect {}\r\n'.format(port).encode())
                 conn.close()
             except Exception as e:
-                print(str(e))
+                logger.info(str(e))
                 return response.json(
                     False,
                     status=501
@@ -156,7 +175,7 @@ async def action(request):
             ret = MYSERIALCONFIG.write_config()
 
     except Exception as e:
-        print(str(e))
+        logger.info(str(e))
         return response.json(
             False,
             status=501
@@ -165,11 +184,14 @@ async def action(request):
 
 @app.route('/api/v1/log', methods=['GET'])
 async def system_log(request):
-    return response.json(ret)
+    with open('ser2net_mgmt.log', 'r') as _f:
+        rtn = _f.readlines()
+        return response.json('\r\n'.join(rtn))
+
 
 @app.route('/api/v1/index', methods=['GET'])
 async def index(request):
-    print("{} request to get index".format(request.ip))
+    logger.info("{} request to get index".format(request.ip))
     return response.json(
         {'file': os.listdir(LOG_PATH)}
     )
@@ -184,7 +206,7 @@ async def report():
 
 def main():
     #app.add_task(rotate(LOG_PATH))
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    app.run(host="0.0.0.0", port=8080, debug=False, access_log=True)
 
 if __name__ == "__main__":
     syslog.openlog("ser2net_mgmt", syslog.LOG_PID)

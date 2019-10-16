@@ -1,1 +1,7 @@
 *.pyc
+*.js.map
+*.js
+*.log
+*.html
+*.css
+*.css.map
